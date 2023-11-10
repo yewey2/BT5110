@@ -4,19 +4,22 @@ import pandas as pd, numpy as np, os, json, psycopg2
 from sqlalchemy import create_engine
 
 
-if os.environ['PG_PASSWORD']:
+if os.environ.get('PG_PASSWORD'):
     print('password set for postgres')
 else:
     print('no password set for postgres')
 
-api_key = os.environ['MAPBOX_TOKEN']
+api_key = os.environ.get('MAPBOX_TOKEN')
 
 # Connect to server
-conn = psycopg2.connect(database="mmsi",
-                        host="localhost",
-                        user="postgres",
-                        password=os.environ.get("PG_PASSWORD"),
-                        port=5432)
+try:
+    conn = psycopg2.connect(database="mmsi",
+                            host="localhost",
+                            user="postgres",
+                            password=os.environ.get("PG_PASSWORD"),
+                            port=5432)
+except:
+    print("Cannot connect to SQL server")
 main = Blueprint("main", __name__)
 
 
