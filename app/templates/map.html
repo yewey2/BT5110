@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ship AIS Data</title>
+<link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet" type="text/css"/>
+<link rel="icon" href="./favicon.ico" type="image/x-icon">
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js" integrity="sha512-q/dWJ3kcmjBLU4Qc47E4A9kTB4m3wuTY7vkFJDTZKjTs8jhyGQnaUrxa0Ytd0ssMZhbNua9hE+E7Qv1j+DyZwA==" crossorigin="anonymous"></script>
+<link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<style>
+    body { 
+        margin: 0; 
+        padding: 0;
+        background-color: #212130;
+        font-family: 'Comic Sans MS', sans-serif;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+     }
+     
+    .topbar {
+        background-color: #111119;
+        position: sticky;
+        z-index:1000;
+        top: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 1.2rem; /* Increase font-size to 18 */
+        height: 4rem; /* Set the minimum height to 3rem */
+        display: flex;
+        justify-content: center; /* Horizontally center the content */
+        align-items: center; /* Vertically center the content */
+        
+    }
+
+    .topbar a {
+        margin-top: 1rem;
+        text-decoration: underline;
+        color: #fff;
+        padding: 30px 50px;
+    }
+
+    #main{
+        display: flex;
+        flex-direction: column;
+        /* justify-content: center; */
+        align-items: center;
+        align-content: center;
+    }
+
+    #title {
+        text-align: center;
+    }
+
+    #sql-form-container {
+        top: 10px;
+        left: 10px;
+        background: rgba(50,50,50, 0.8);
+        padding: 2rem;
+        border-radius: 5px;
+        margin: 1rem;
+        width: 80%;
+    }
+    
+    #sql-form-container textarea {
+        width: 100%;
+        height: 100px; /* Adjust the height as needed */
+        padding: 5px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        resize: vertical; /* Allow vertical resizing */
+    }
+
+    #sql-form-container button {
+        margin-top: 10px;
+        padding: 10px; /* Increase padding for a better look */
+        background: #0074d9;
+        color: #fff;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+
+    #sql-form-container button#submit-btn {
+        background: #33dd45;
+    }
+        
+    #sql-form-container button:hover {
+        background: #0056b3; /* Darker shade on hover */
+    }
+
+    .buttons {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+    }
+
+    .buttons button {
+        padding: 10px;
+        margin-bottom: 15px;
+        border: none;
+        border-radius: 5px;
+        background-color: #444;
+        color: #fff;
+    }
+
+    #map-container { 
+        /* margin: 1rem; */
+        padding: 1rem 0;
+        margin: 1rem 0;
+        position: relative;
+        min-width:60vw;
+        min-height:60vh;
+        display: flex;
+        justify-content: center;
+    }
+
+    #map { 
+        position:absolute; 
+        /* top: 0; */
+        /* left:0; */
+        /* right:0; */
+        /* bottom: 0; */
+        width: 100%; 
+        height: 100%;
+        color: black;
+    }
+    
+    #results {
+        min-width:60vw;
+        
+    }
+    /* Style for the table */
+    #results table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+        border: 1px solid #ccc;
+    }
+
+    /* Style for table header */
+    #results th {
+        background-color: #0074d9;
+        color: #fff;
+        padding: 10px;
+        font-weight: bold;
+        text-align: left;
+    }
+
+    /* Style for table cells */
+    #results td {
+        padding: 8px;
+        border: 1px solid #ccc;
+    }
+
+    /* Style for alternating rows */
+    #results tr:nth-child(even) {
+        background-color: #f2f2f2;
+        color: #000;
+    }
+
+    /* Hover effect on rows */
+    #results tr:hover {
+        background-color: #cce0ff;
+        color: #000;
+    }
+
+</style>
+</head>
+<body>
+<div class="topbar">
+    <a href="/">Query View</a>
+    <a href="/map">Map View</a>
+</div>
+
+<div id="main">
+
+<h1 id="title">BT5110 Ship Tracking</h1>
+
+<div id="sql-form-container">
+    <form id="sql-form" action="/querydata" method="post">
+        <label for="sql-query">Enter your custom query:</label>
+        <textarea name="sql-query" id="sql-query" placeholder="Enter SQL query"></textarea>
+        <br/>
+        <div class="buttons">
+            <button type="button" onclick="setExampleQuery(0)">Example 1</button>
+            <button type="button" onclick="setExampleQuery(1)">Example 2</button>
+        </div>
+        <div class="buttons">
+            <button id="submit-btn" type="submit">Submit</button>
+        </div>
+    </form>
+</div>
+<div class="buttons">
+    <button id="ships-toggle">Click to show ships!</button>
+    <button id="grids-toggle">Click to show grids!</button>
+</div>
+
+
+<div id="map-container">
+    <div id="map"></div>
+</div>
+
+
+<div id="results">
+
+</div>
+
+</div>
+
+<script>
+
+    var socket = io();
+
+    var mmsi_data = [[566386000.0, 103.74943, 1.23873]];
+    var geojson = {
+        type: 'FeatureCollection',
+        features: mmsi_data.map(item => ({
+            type: 'Feature',
+            properties: {
+                mmsi: item[0],
+            },
+            geometry: {
+                type: 'Point',
+                coordinates: [item[1], item[2]]
+            }
+        }))
+    };
+
+    
+
+
+    mapboxgl.accessToken = '{{ api_key }}' ;
+    console.log('{{api_key}}')
+
+    const map = new mapboxgl.Map({
+        container: 'map', // container ID
+        // Choose from Mapbox's core styles, or make your own style with Mapbox Studio
+        style: 'mapbox://styles/mapbox/streets-v12', // style URL
+        center: [103.75337, 1.30515], // starting position [lng, lat]
+
+        zoom: 7 // starting zoom
+    });
+
+    // example queries
+    function setExampleQuery(query_number) {
+        const example_queries = [
+            'select mmsi, lon, lat from fact_messages_type_1 as f \n\
+inner join dim_location as l on f.location_id = l.location_id \n\
+inner join dim_vessel as v on f.vessel_id = v.vessel_id \n\
+where v.mmsi = 563009230',
+            "select mmsi, lon, lat \n\
+from fact_messages_type_1 as f1 \n\
+, dim_location as dl \n\
+, dim_time as dt \n\
+, dim_date as dd \n\
+, dim_vessel as dv \n\
+where f1.location_id = dl.location_id \n\
+and dt.time_id = f1.time_id \n\
+and dd.date_id = f1.date_id \n\
+and dv.vessel_id = f1.vessel_id \n\
+ \n\
+and dd.date = '2022-09-01' \n\
+and dt.hour = 3 \n\
+and dt.minute >=4 \n\
+and dt.minute <=5 \n\
+group by dv.vessel_id, dl.lon, dl.lat",
+        ]
+        query = example_queries[query_number];
+        document.getElementById('sql-query').value = query;
+    };
+
+
+    // Part to get query data
+    document.addEventListener('DOMContentLoaded', function () {
+        // Attach a submit event listener to the form
+        document.getElementById('sql-form').addEventListener('submit', function (e) {
+            // Prevent the default form submission
+            e.preventDefault();
+
+            // Get the form data
+            var formData = new FormData(this);
+
+            // Send an AJAX request to the server
+            fetch('/querydata', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status == 'success') {
+                    // Update the page with the result
+                    // document.getElementById('results').innerHTML = '<p>' + data.result + '</p>';
+
+                    mmsi_data = JSON.parse(data.result);
+                    console.log(mmsi_data);
+                    var geojson = {
+                        type: 'FeatureCollection',
+                        features: Object.keys(mmsi_data.lat).map(index => ({
+                            type: 'Feature',
+                            properties: {
+                                mmsi: mmsi_data.mmsi[index],
+                                datetime: mmsi_data.datetime ? mmsi_data.datetime[index] : '-',
+                            },
+                            geometry: {
+                                type: 'Point',
+                                coordinates: [mmsi_data.lon[index], mmsi_data.lat[index]]
+                            }
+                        }))
+                    };
+                    map.getSource('points').setData(geojson);
+
+                    document.getElementById("results").innerHTML = "";
+
+                    // Create a table element
+                    var table = document.createElement("table");
+
+                    // Create the header row
+                    var headerRow = table.createTHead().insertRow(0);
+                    headerRow.insertCell(0).textContent = "MMSI";
+                    headerRow.insertCell(1).textContent = "Longitude";
+                    headerRow.insertCell(2).textContent = "Latitude";
+
+                    // Determine the number of rows based on the number of entries in one of the properties (e.g., 'lat')
+                    var numRows = Object.keys(mmsi_data.lat).length;
+
+                    // Create and append rows with data
+                    for (var i = 0; i < numRows; i++) {
+                        var row = table.insertRow(-1);
+                        var index = i.toString();
+
+                        var mmsi = mmsi_data.mmsi[index] || "";
+                        var lon = mmsi_data.lon[index] || "";
+                        var lat = mmsi_data.lat[index] || "";
+
+                        row.insertCell(0).textContent = mmsi;
+                        row.insertCell(1).textContent = lon;
+                        row.insertCell(2).textContent = lat;
+                    }
+
+                    // Append the table to the results div
+                    document.getElementById("results").appendChild(table);
+                } else {
+                    document.getElementById('results').innerHTML = '<p> Error!\n' + data.result + ' \ncannot be run</p>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        });
+    });
+
+    // OLD DRAW LINES
+    // Function to calculate the grid lines
+    function calculateGridLines() {
+        const gridLines = [];
+        const gridSizeInNauticalMiles = 1; // Change this value to your desired grid size
+
+        for (let lon = -180; lon < 180; lon += gridSizeInNauticalMiles / 60) {
+            gridLines.push({
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                    type: 'LineString',
+                    coordinates: [[lon, -90], [lon,90]],
+                }
+            });
+        }
+        for (let lat = -90; lat < 90; lat += gridSizeInNauticalMiles / 60) {
+            gridLines.push({
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                    type: 'LineString',
+                    coordinates: [[-180, lat], [180,lat]],
+                }
+            });
+        }
+
+        return {
+            type: 'FeatureCollection',
+            features: gridLines
+        };
+    }
+
+    console.log('start grids calc');
+    const gridGeoJSON = calculateGridLines();
+
+    console.log('gridlines', gridGeoJSON);
+
+
+    // --------------------------------------------------
+    // // NEW WITH SHAIDNG
+    // function generateGrid() {
+    //     // Define the grid boundaries
+    //     const lonMin = -180;
+    //     const lonMax = 180;
+    //     const latMin = -90;
+    //     const latMax = 90;
+
+    //     const gridGeojson = {
+    //         type: 'FeatureCollection',
+    //         features: []
+    //     };
+
+    //     // const nauticalMile = 1.852; // 1 nautical mile in kilometers
+    //     // const interval = nauticalMile / 60; // Interval for grid lines in degrees (1 minute of latitude)
+    //     // reset interval size 
+    //     const interval  = 1.2;
+
+    //     for (let lon = lonMin; lon < lonMax; lon += interval) {
+    //         for (let lat = latMin; lat < latMax; lat += interval) {
+    //             const feature = {
+    //                 type: 'Feature',
+    //                 properties: {},
+    //                 geometry: {
+    //                     type: 'Polygon',
+    //                     coordinates: [
+    //                         [
+    //                             [lon, lat],
+    //                             [lon + interval, lat],
+    //                             [lon + interval, lat + interval],
+    //                             [lon, lat + interval],
+    //                             [lon, lat]
+    //                         ]
+    //                     ]
+    //                 }
+    //             };
+
+    //             gridGeojson.features.push(feature);
+    //         }
+    //     }
+
+    //     return gridGeojson;
+    // }
+
+    // console.log('getting grid geojson');
+    // // Create a grid GeoJSON feature collection
+    // const gridGeojson = generateGrid();
+
+    // console.log('grid geojson', gridGeojson);
+
+
+    map.on('load', () => {
+        map.flyTo({
+            center:[103.75337, 1.30515], 
+            essential: true,
+            zoom: 10
+        });
+        
+        map.addSource('points', {
+            type: 'geojson',
+            data: geojson
+        });
+
+        map.addLayer({
+            id: 'points',
+            type: 'circle',
+            source: 'points',
+            paint: {
+                'circle-radius': 5,
+                'circle-color': '#007cbf' // Customize the color
+            }
+        });
+
+        // Add a popup on hover
+        map.on('mouseenter', 'points', (e) => {
+            const coordinates = e.features[0].geometry.coordinates.slice();
+            const mmsi = e.features[0].properties.mmsi;
+
+            // Create a popup with the MMSI information
+            new mapboxgl.Popup()
+                .setLngLat(coordinates)
+                .setHTML(`MMSI: ${mmsi}`)
+                .addTo(map);
+        });
+
+        // Remove the popup when the mouse leaves the point
+        map.on('mouseleave', 'points', () => {
+            map.getCanvas().style.cursor = '';
+            // DOESNT WORK!!! TO FIX
+            // map.closePopup();
+        });
+
+
+        // Add an event listener to the toggle button
+        const toggleButton = document.getElementById('ships-toggle');
+        toggleButton.addEventListener('click', () => {
+            const pointsLayer = map.getLayer('points');
+            const visibility = map.getLayoutProperty('points', 'visibility');
+
+            // Toggle the layer visibility
+            if (visibility === 'none') {
+                map.setLayoutProperty('points', 'visibility', 'visible');
+            } else {
+                map.setLayoutProperty('points', 'visibility', 'none');
+            }
+        });
+
+        
+        // OLD GRID
+        // Create the grid lines and add them to the map
+        map.addSource('grid', {
+            type: 'geojson',
+            data: gridGeoJSON
+        });
+
+        map.addLayer({
+            id: 'grid-lines',
+            type: 'line',
+            source: 'grid',
+            layout: {
+                // 'line-join': 'round',
+                // 'line-cap': 'round'
+                visibility: 'none' // Initially hide the layer
+            },
+            paint: {
+                'line-color': '#888',
+                'line-width': 1
+            }
+        });
+
+        // NEW GRID
+        // Add the grid GeoJSON as a source and a layer to the map
+        // map.addSource('grid', {
+        //     type: 'geojson',
+        //     data: gridGeojson
+        // });
+
+        // map.addLayer({
+        //     id: 'grid',
+        //     type: 'fill',
+        //     source: 'grid',
+        //     paint: {
+        //         'fill-color': '#33ff33',
+        //         'fill-opacity': 0.1
+        //     },
+        //     layout: {
+        //         visibility: 'none' // Initially hide the layer
+        //     }
+        // });
+        
+        // map.addLayer({
+        //     id: 'outline',
+        //     type: 'line',
+        //     source: 'grid',
+        //     paint: {
+        //         'line-color': '#333',
+        //         'line-width': 1
+        //     },
+        //     layout: {
+        //         visibility: 'none' // Initially hide the layer
+        //     }
+        // });
+
+        // Add an event listener to the toggle button for the grid layer
+
+        const toggleGrid = document.getElementById('grids-toggle');
+        toggleGrid.addEventListener('click', () => {
+            const visibility = map.getLayoutProperty('grid-lines', 'visibility');
+            // const visibility = map.getLayoutProperty('grid', 'visibility');
+
+            // Toggle the grid layer visibility
+            if (visibility === 'none') {
+                // map.setLayoutProperty('grid', 'visibility', 'visible');
+                // map.setLayoutProperty('outline', 'visibility', 'visible');
+                map.setLayoutProperty('grid-lines', 'visibility', 'visible');
+            } else {
+                // map.setLayoutProperty('grid', 'visibility', 'none');
+                // map.setLayoutProperty('outline', 'visibility', 'none');
+                map.setLayoutProperty('grid-lines', 'visibility', 'none');
+            }
+        });
+
+    });
+
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ship AIS Data</title>
+<link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet" type="text/css"/>
+<link rel="icon" href="./favicon.ico" type="image/x-icon">
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js" integrity="sha512-q/dWJ3kcmjBLU4Qc47E4A9kTB4m3wuTY7vkFJDTZKjTs8jhyGQnaUrxa0Ytd0ssMZhbNua9hE+E7Qv1j+DyZwA==" crossorigin="anonymous"></script>
+<link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<style>
+    body { 
+        margin: 0; 
+        padding: 0;
+        background-color: #212130;
+        font-family: 'Comic Sans MS', sans-serif;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+     }
+     
+    .topbar {
+        background-color: #111119;
+        position: sticky;
+        top: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 1.2rem; /* Increase font-size to 18 */
+        height: 4rem; /* Set the minimum height to 3rem */
+        display: flex;
+        justify-content: center; /* Horizontally center the content */
+        align-items: center; /* Vertically center the content */
+        
+    }
+
+    .topbar a {
+        margin-top: 1rem;
+        text-decoration: underline;
+        color: #fff;
+        padding: 30px 50px;
+    }
+
+    #main{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        align-content: center;
+    }
+
+    #title {
+        text-align: center;
+    }
+
+    #sql-form-container {
+        top: 10px;
+        left: 10px;
+        background: rgba(50,50,50, 0.8);
+        padding: 2rem;
+        border-radius: 5px;
+        margin: 1rem;
+        width: 80%;
+    }
+    
+    #sql-form-container textarea {
+        width: 100%;
+        height: 100px; /* Adjust the height as needed */
+        padding: 5px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        resize: vertical; /* Allow vertical resizing */
+    }
+
+    #sql-form-container button {
+        margin-top: 10px;
+        padding: 10px; /* Increase padding for a better look */
+        background: #0074d9;
+        color: #fff;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+
+    #sql-form-container button#submit-btn {
+        background: #33dd45;
+    }
+        
+    #sql-form-container button:hover {
+        background: #0056b3; /* Darker shade on hover */
+    }
+
+    .buttons {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+    }
+
+    .buttons button {
+        padding: 10px;
+        margin-bottom: 15px;
+        border: none;
+        border-radius: 5px;
+        background-color: #444;
+        color: #fff;
+    }
+
+    #map-container { 
+        /* margin: 1rem; */
+        padding: 1rem 0;
+        margin: 1rem 0;
+        position: relative;
+        min-width:60vw;
+        min-height:60vh;
+        display: flex;
+        justify-content: center;
+    }
+
+    #map { 
+        position:absolute; 
+        /* top: 0; */
+        /* left:0; */
+        /* right:0; */
+        /* bottom: 0; */
+        width: 80%; 
+        height: 80%;
+        color: black;
+    }
+
+    #results {
+        min-width:60vw;
+        
+    }
+    /* Style for the table */
+    #results table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+        border: 1px solid #ccc;
+    }
+
+    /* Style for table header */
+    #results th {
+        background-color: #0074d9;
+        color: #fff;
+        padding: 10px;
+        font-weight: bold;
+        text-align: left;
+    }
+
+    /* Style for table cells */
+    #results td {
+        padding: 8px;
+        border: 1px solid #ccc;
+    }
+
+    /* Style for alternating rows */
+    #results tr:nth-child(even) {
+        background-color: #f2f2f2;
+        color: #000;
+    }
+
+    /* Hover effect on rows */
+    #results tr:hover {
+        background-color: #cce0ff;
+        color: #000;
+    }
+
+</style>
+</head>
+<body>
+<div class="topbar">
+    <a href="/">Query View</a>
+    <a href="/map">Map View</a>
+</div>
+
+
+<div id="main">
+
+<h1 id="title">BT5110 Ship Tracking</h1>
+
+<div id="sql-form-container">
+    <form id="sql-form" action="/querydata" method="post">
+        <label for="sql-query">Enter your custom query:</label>
+        <textarea name="sql-query" id="sql-query" placeholder="Enter SQL query"></textarea>
+        <br/>
+        <div class="buttons">
+            <button type="button" onclick="setExampleQuery(0)">Example 1</button>
+            <button type="button" onclick="setExampleQuery(1)">Example 2</button>
+        </div>
+        <div class="buttons">
+            <button id="submit-btn" type="submit">Submit</button>
+        </div>
+    </form>
+</div>
+<div class="buttons">
+</div>
+
+
+<div id="results">
+
+</div>
+
+</div>
+
+<script>
+
+    var socket = io();
+
+    var mmsi_data = [[563066530.0, 103.75931, 1.27341],
+        [563021460.0, 103.76273, 1.26776],
+        [566657000.0, 103.76005, 1.2914],
+        [563073340.0, 103.65893, 1.28036],
+        [566386000.0, 103.74943, 1.23873]
+    ];
+    // example queries
+    function setExampleQuery(query_number) {
+        const example_queries = [
+            "select dl.grid, count(DISTINCT f1.vessel_id) from fact_messages_type_1 as f1 \n\
+inner join dim_location as dl \n\
+on f1.location_id = dl.location_id \n\
+inner join dim_time as dt \n\
+on dt.time_id = f1.time_id \n\
+inner join dim_date as dd \n\
+on dd.date_id = f1.date_id \n\
+\n\
+where dd.date = '2022-09-01' \n\
+and dt.hour = 3 \n\
+and dt.minute >=0 \n\
+and dt.minute <=10 \n\
+group by dl.grid \n\
+order by count(distinct f1.vessel_id) desc",
+"WITH tb AS (\n\
+    SELECT\n\
+        dv.mmsi AS mmsi,\n\
+        dv1.mmsi AS mmsi1,\n\
+		dl.grid as grid,\n\
+        SQRT((dl.lon - dl1.lon) * (dl.lon - dl1.lon) + (dl.lat - dl1.lat) * (dl.lat - dl1.lat)) AS distance\n\
+    FROM\n\
+        fact_messages_type_1 AS f1,\n\
+        fact_messages_type_1 AS f11,\n\
+        dim_location AS dl,\n\
+        dim_time AS dt,\n\
+        dim_date AS dd,\n\
+        dim_location AS dl1,\n\
+        dim_time AS dt1,\n\
+        dim_date AS dd1,\n\
+        dim_vessel AS dv,\n\
+        dim_vessel AS dv1\n\
+    WHERE\n\
+        f1.location_id = dl.location_id\n\
+        AND dt.time_id = f1.time_id\n\
+        AND dd.date_id = f1.date_id\n\
+        AND dv.vessel_id = f1.vessel_id\n\
+        AND f11.location_id = dl1.location_id\n\
+        AND dt1.time_id = f11.time_id\n\
+        AND dd1.date_id = f11.date_id\n\
+        AND dv1.vessel_id = f11.vessel_id\n\
+        AND f1.vessel_id != f11.vessel_id\n\
+        AND dd.date = '2022-09-01'\n\
+        AND dt.hour = 3\n\
+        AND dt.minute >= 4\n\
+        AND dt.minute <= 5\n\
+        AND dd1.date = '2022-09-01'\n\
+        AND dt1.hour = 3\n\
+        AND dt1.minute >= 4\n\
+        AND dt1.minute <= 5\n\
+        AND dl.grid = dl1.grid\n\
+)\n\
+SELECT mmsi, mmsi1, grid, MAX(distance) AS max_distance\n\
+FROM tb\n\
+GROUP BY mmsi, mmsi1, grid\n\
+ORDER BY max_distance DESC\n\
+LIMIT 10;"
+        ]
+        query = example_queries[query_number];
+        document.getElementById('sql-query').value = query;
+    };
+
+
+    // Part to get query data
+    document.addEventListener('DOMContentLoaded', function () {
+        // Attach a submit event listener to the form
+        document.getElementById('sql-form').addEventListener('submit', function (e) {
+            // Prevent the default form submission
+            e.preventDefault();
+
+            // Get the form data
+            var formData = new FormData(this);
+
+            // Send an AJAX request to the server
+            fetch('/querydata', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status == 'success') {
+                    // Update the page with the result
+                    // document.getElementById('results').innerHTML = '<p>' + data.result + '</p>';
+                    console.log(data.result);
+                    mmsi_data = JSON.parse(data.result);
+                    console.log(mmsi_data)
+                   
+                    // Create a table element
+                    var table = document.createElement("table");
+                    var properties = Object.keys(mmsi_data);
+
+                    // Create the header row
+                    var headerRow = table.createTHead().insertRow(0);
+                    properties.forEach(key => {
+                        var headerCell = document.createElement("th");
+                        headerCell.textContent = key;
+                        headerRow.appendChild(headerCell);
+                    });
+
+                    console.log(numRows);
+
+                    // Determine the number of rows based on the number of entries in one of the properties (e.g., 'lat')
+                    var numRows = properties.length > 0 ? Object.keys(mmsi_data[properties[0]]).length : 0;
+
+                    // Create and append rows with data
+                    for (var i = 0; i < numRows; i++) {
+                        var row = table.insertRow(-1);
+                        properties.forEach(key => {
+                            var cell = row.insertCell();
+                            var index = i.toString();
+                            cell.textContent = mmsi_data[key][index] || "";
+                        });
+                    }
+
+
+                    // Append the table to the results div
+                    document.getElementById("results").appendChild(table);
+
+                } else {
+                    document.getElementById('results').innerHTML = '<p> Error!\n' + data.result + ' \ncannot be run</p>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        });
+    });
+
+</script>
+
+</body>
+</html>

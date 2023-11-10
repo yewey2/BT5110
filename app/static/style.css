@@ -1,0 +1,70 @@
+body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  /* padding: 0; */
+}
+
+#main {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+}
+#left, #right {
+  width: 49%;
+  padding: 2rem;
+  box-sizing: border-box;
+  min-height: 100%;
+  text-align: center;
+}
+
+#right {
+  display: none;
+}
+
+#chatting-area {
+  max-height: 70vh;
+  overflow: auto;
+}
+#landing {
+  text-align: center;
+  /* height: 10em; */
+  display: block;
+  margin-bottom: 10em;
+  
+}
+
+#image-container {
+  display: block;
+}
+
+#clickable-image {
+  border: 1px solid black;
+  /* max-width: 80%;
+  max-height: 80%; */
+  position: absolute;
+  /* cursor: crosshair; */
+}
+
+#overlay-box {
+  display: block;
+  position: absolute;
+  width: 0;
+  height: 0;
+  /* border: -3px solid red; */
+  box-shadow: inset 0px 0px 0px 3px red;
+  pointer-events: none;
+}
+
+#instructions {
+  display: inline-grid;
+  text-align: left;
+  grid-gap: 0.5rem;
+  padding: 1rem;
+  grid-template-columns: auto auto;
+  justify-content: space-around;   
+  align-content: space-around;  
+}
